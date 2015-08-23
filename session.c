@@ -354,14 +354,15 @@ void datafeed_in(const struct sr_dev_inst *sdi,
 
 int opt_to_gvar(char *key, char *value, struct sr_config *src)
 {
-	const struct sr_key_info *srci;
+	const struct sr_key_info *srci, *srmqi;
 	double tmp_double, dlow, dhigh;
-	uint64_t tmp_u64, p, q, low, high;
-	GVariant *rational[2], *range[2];
+	uint64_t tmp_u64, p, q, low, high, mqflags;
+	uint32_t mq;
+	GVariant *rational[2], *range[2], *gtup[2];
 	GVariantBuilder *vbl;
 	gboolean tmp_bool;
 	gchar **keyval;
-	int ret;
+	int ret, i;
 
 	if (!(srci = sr_key_info_name_get(SR_KEY_CONFIG, key))) {
 		g_critical("Unknown device option '%s'.", (char *) key);
@@ -450,6 +451,33 @@ int opt_to_gvar(char *key, char *value, struct sr_config *src)
 					      keyval[0], keyval[1]);
 			src->data = g_variant_builder_end(vbl);
 			g_strfreev(keyval);
+		}
+		break;
+	case SR_T_MQ:
+		/*
+		  Argument is MQ id e.g. ("voltage") optionally followed by one
+		  or more /<mqflag> e.g. "/ac".
+		 */
+		keyval = g_strsplit(value, "/", 0);
+		if (!keyval[0] || !(srmqi = sr_key_info_name_get(SR_KEY_MQ, keyval[0]))) {
+			g_strfreev(keyval);
+			ret = -1;
+			break;
+		}
+		mq = srmqi->key;
+		mqflags = 0;
+		for (i = 1; keyval[i]; i++) {
+			if (!(srmqi = sr_key_info_name_get(SR_KEY_MQFLAGS, keyval[i]))) {
+				ret = -1;
+				break;
+			}
+			mqflags |= srmqi->key;
+		}
+		g_strfreev(keyval);
+		if (ret != -1) {
+			gtup[0] = g_variant_new_uint32(mq);
+			gtup[1] = g_variant_new_uint64(mqflags);
+			src->data = g_variant_new_tuple(gtup, 2);
 		}
 		break;
 	default:
